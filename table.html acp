@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
     <head>
         <title>table</title>
@@ -11,6 +12,14 @@
             </tr>
             <tr>
                 <td>wednesday</td>
-                <td> emma myers</td>
-                <td>hunter doohan</td
-            </tr> </html>
+                <td>emma myers</td>
+                <td>moosa mostafa</td>
+            </tr>
+            <tr>
+               <td>wicked</td>
+               <td>arianna grande</td>
+               <td>ethan slater</td>
+            </tr>
+        </table>
+    </body>
+</html>

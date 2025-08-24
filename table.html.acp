@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>table</title>
+    </head>
+    <body>
+         <table border="5" bgcolor="purple">
+            <tr>
+                <th>film</th>
+                <th>female actor</th>
+                <th>male actor</th>
+            </tr>
+            <tr>
+                <td>kpop demon hunters</td>
+                <td> arden cho</td>
+                <td>ahn hyo seop</td>
+            </tr>
+            <tr>
+               <td>monster high</td>
+               <td> miia harris</td>
+               <td> chase walker</td>
+            </tr>
+        </table>
+    </body>
+        
