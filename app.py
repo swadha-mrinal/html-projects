@@ -151,7 +151,7 @@ def prediction_panel(image:Image.Image,source:str):
 
 def get_model():
     return load_local_teachable_machine_model(str(config.MODEL_PATH), str(config.LABELS_PATH))
-
+_
 def normalize(label: str) -> str:
     return LABEL_MAP.get(label.strip(),label.strip())
 
@@ -169,7 +169,50 @@ def pridiction_panel(image: Image.Image , source:str):
         st.progress(float(pred["confidence"]),text=f"confidence:{pred['confidence']:.1%}")
         spell = GESTURE_SPELLS.get(pred["label"],"Arcane pulse")
         c1,c2 = st.colums(2)
-
+def  reset_magic_session():
+    for k,v in _DEFAULTS.items():
+        st.session_state[k] = v
+def generate_magic_bundle():
+    if not st.session_state.prediction:
+        st.warning("Capture or upload an image first")
+        return
+    label = st.session_state.prediction["label"]
+    spell = st.session_state.spell_name
+    st.session_state.spell_prompt = build_hidden_prompt(label,spell,st.session_state.input_source)
+    with st.spinner("casting ai magic from the detected gesture. . .")
+    st.session_state.spell_text = generate_magic_responce(label,spell, f"this spell came from a{st.session_state.input_source} hand gesture image.")
+    img,eer = generate_magic_visual(st.session_state.spell_prompt)
+    if img:
+        st.session_state.spell_scene_image = img
+        st.session_state.spell_card_image = create_spell_card(spell,label,st.session_state.spell_ext,img)
+    else:
+        st.session_state.spell_scene_image = st.session_state.spell_card(spell,label,st.session_state.spell_card_image = 
+     None      
+        st.error(err or "could not generate the spell image")   
+    st.session_state.spell_log = ([{"gesture":label,"spell":spell,"text":
+st.session_state.spell_text,"source": st.session_state.input_source]}
+                                    + st.session_state.spell_log)
+[:config.MAX_SPELL_LOG]
+def show_hud():
+c1,c2,c,c4 = st.columns(4)
+gesture = st.session_state.prediction["label"] if st.session_state.prediction else
+"waiting . . ."
+    spell = st.session_state.spell_name or "No spell yet. . . "
+    for col,label,val in[
+        (c1,"suppported gestures", "palm.peace.pointer.thumbs up"),
+        (c2,"dectected gesture" gesture),
+        (c3,"active spell",spell),
+        (c4,"spell log",len(st.session_state.spell_log)),
+    ]:
+        col.markdown(f'<div class="status-card><b>{label}</b><br>{val}</div>' unsafe_allow_html = True)
+def prediction_panel(current_imge:Image.Image,source_name:str):
+    st.session_state.captured_image = current_image
+    st.session_state.input_source = source_name
+    st.image(current_image,caption="gesture image used for magic casting",
+         use_container_width=True)
+    st.markdown(f'<div class="source-pill"> Input source:{source_name.title()}</div>' unsafe_allow_html=True)
+                                                                                                                       )
+                                                                     
 
         
 # ---------- PROVIDED — do not edit -------------------------------------------
