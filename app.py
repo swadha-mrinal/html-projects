@@ -1,221 +1,104 @@
-# ===== LESSON 1 — Build the Magic Gesture Recognizer =========================
-# Goal : Load a Teachable Machine model, capture a gesture, detect it,
-#        and map it to a spell name.
-# Run  : streamlit run lesson1_boilerplate/app.py
-# =============================================================================
+"""
+╔══════════════════════════════════════════════════════════════╗
+║  LESSON 3 — Adding Verification to the AI Generation Flow    ║
+╚══════════════════════════════════════════════════════════════╝
 
-# ---------- PROVIDED — do not edit below this line ---------------------------
-import streamlit as st
-from PIL import Image
-import config
-from gesture_utils import load_local_teachable_machine_model, predict_gesture_from_image
+GOAL: Add hCaptcha server-side verification so /generate only
+      runs after the user solves the captcha challenge.
 
-st.set_page_config(page_title=config.APP_TITLE, page_icon=config.APP_ICON, layout="wide")
+YOUR TASKS (app.py):
+  1. Add HCAPTCHA_SECRET and HCAPTCHA_VERIFY_URL constants
+  2. Write verify_hcaptcha(token) — POST to HCAPTCHA_VERIFY_URL
+     with secret + token, return resp.json()["success"]
+  3. Inside /generate: get token from request, return 400 if
+     missing, return 400 if verify_hcaptcha(token) is False
 
-# Cleans raw model labels into friendly names
-LABEL_MAP = {
-    "Open Palm": "Palm", "Palm": "Palm", "Peace": "Peace",
-    "Pointer": "Pointer", "Point": "Pointer",
-    "Thumbs Up": "Thumbs Up", "Thumbsup": "Thumbs Up", "No Gesture": "No Gesture",
-}
+YOUR TASKS (static/js/studio.js):
+  4. Write hcaptchaReady() — render the widget with hcaptcha.render()
+  5. Wire Generate button to show the captcha modal
+  6. Wire Cancel button to hide the modal
+  7. Write runGeneration(token) — POST to /generate with token,
+     render concept on success
 
-# Dark fantasy CSS — pre-built for you
-def render_styles():
-    st.markdown("""
-        <style>
-        .stApp { background: radial-gradient(circle at top, #241339 0%, #100914 42%, #07070b 100%); color: #f5efff; }
-        .hero  { padding: 22px; border-radius: 22px; border: 1px solid rgba(191,158,255,.20);
-                 background: linear-gradient(135deg,rgba(44,24,70,.92),rgba(15,12,30,.96)); margin-bottom: 1rem; }
-        .panel { padding: 20px; border-radius: 22px; border: 1px solid rgba(191,158,255,.18);
-                 background: rgba(255,255,255,.03); box-shadow: 0 0 32px rgba(118,80,255,.10); margin-bottom: 1rem; }
-        .card  { padding: 14px; border-radius: 16px; background: rgba(94,67,170,.14);
-                 border: 1px solid rgba(186,163,255,.18); margin-bottom: 10px; text-align: center; }
-        .pill  { display: inline-block; padding: 7px 14px; border-radius: 999px;
-                 background: rgba(108,75,214,.18); border: 1px solid rgba(193,170,255,.18);
-                 color: #efe7ff; margin-bottom: 12px; }
-        </style>""", unsafe_allow_html=True)
-# ---------- END PROVIDED ------------------------------------------------------
+Run:  python app.py  →  http://localhost:5000/studio
+"""
 
+import os, json, requests
+from flask import Flask, render_template, request, jsonify
+from groq import Groq
+from dotenv import load_dotenv
 
-# TODO 1 — Gesture → Spell mapping  (~4 lines)
-# Create a dict called GESTURE_SPELLS mapping:
-#   "Palm" → "Shield of Light"
-#   "Peace" → "Healing Aura"
-#   "Pointer" → "Lightning Strike"
-#   "Thumbs Up" → "Phoenix Blessing"
+load_dotenv()
+app = Flask(__name__)
+app.secret_key = "sneaker-studio-dev-key"
 
-# GESTURE_SPELLS = { ... }
+GROQ_API_KEY      = os.environ.get("GROQ_API_KEY", "")
+HCAPTCHA_SITE_KEY = os.environ.get("HCAPTCHA_SITE_KEY", "10000000-ffff-ffff-ffff-000000000001")
+groq_client       = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+# ── TODO 1: Add HCAPTCHA_SECRET and HCAPTCHA_VERIFY_URL ───────
 
 
-# TODO 2 — Cached model loader  (~3 lines)
-# Decorate with @st.cache_resource(show_spinner=False)
-# Call load_local_teachable_machine_model(str(config.MODEL_PATH), str(config.LABELS_PATH))
-# Return the result.
+DESIGN_PROMPT = """You are an expert sneaker designer. Generate a detailed concept based on:
+Style: {style}, Primary Color: {primary_color}, Accent Color: {accent_color},
+Material: {material}, Occasion: {occasion}, Inspiration: {inspiration}
 
-# @st.cache_resource(show_spinner=False)
-# def get_model():
-#     ...
-
-
-# TODO 3 — Label normalizer  (~2 lines)
-# Use LABEL_MAP.get(label.strip(), label.strip()) to return the cleaned label.
-
-# def normalize(label: str) -> str:
-#     ...
+Respond with raw JSON only — no markdown, no explanation.
+{{"name":"2-4 word creative name","tagline":"punchy tagline max 10 words","description":"2-3 sentence design description","materials":["mat1","mat2","mat3"],"colorways":[{{"name":"colorway name","sole":"#hex","upper":"#hex","accent":"#hex","lace":"#hex","tongue":"#hex"}}],"features":["feat1","feat2","feat3","feat4"],"sole_type":"sole tech description","target_audience":"who this is for","retail_price":"$XXX","style_tags":["tag1","tag2","tag3"]}}
+Generate exactly 3 colorways: user colors first, then 2 creative variations. All hex codes must be valid #RRGGBB."""
 
 
-# TODO 4 — Prediction panel  (~25 lines)
-# def prediction_panel(image, source):
-#   - st.image(image, caption="Gesture image", use_container_width=True)
-#   - st.markdown pill showing source
-#   - try:
-#       model, labels = get_model()
-#       pred = predict_gesture_from_image(model, labels, image)
-#       normalize pred["label"] and each item["label"] in pred["top_predictions"]
-#       st.success(f"Detected gesture: {pred['label']}")
-#       st.progress(float(pred["confidence"]), text=f"Confidence: {pred['confidence']:.1%}")
-#       spell = GESTURE_SPELLS.get(pred["label"], "Arcane Pulse")
-#       two columns: left card = detected gesture, right card = mapped spell
-#       st.expander("All prediction scores") → loop top_predictions → st.progress each
-#   - except Exception as e: st.error(...)
-
-# def prediction_panel(image, source):
-#     ...
+def get_prefs(data):
+    fields = [("style","casual"),("primary_color","white"),("accent_color","black"),
+              ("material","leather"),("occasion","everyday"),("inspiration","")]
+    return {k: data.get(k, d) for k, d in fields}
 
 
-# TODO 5 — Main app layout  (~20 lines)
-# def main():
-#   render_styles()
-#   st.markdown hero div with config.APP_ICON + config.APP_TITLE
-#   st.expander with info about the 4 gestures
-#   st.markdown '<div class="panel">'
-#   tabs = st.tabs(["📷 Webcam Capture", "🖼️ Upload Image"])
-#   tab[0]: cam = st.camera_input(...)
-#           if cam: prediction_panel(Image.open(cam).convert("RGB"), "webcam")
-#           else: st.info(...)
-#   tab[1]: up = st.file_uploader(..., type=["png","jpg","jpeg"])
-#           if up: prediction_panel(Image.open(up).convert("RGB"), "upload")
-#           else: st.info(...)
-#   st.markdown '</div>'
+def generate_concept(prefs):
+    if not groq_client: raise RuntimeError("GROQ_API_KEY not set.")
+    chat = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role":"system","content":"Sneaker design expert. Pure JSON only."},
+                  {"role":"user","content":DESIGN_PROMPT.format(**prefs)}],
+        temperature=0.85, max_tokens=1200)
+    raw = chat.choices[0].message.content.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"): raw = raw[4:]
+    return json.loads(raw.strip().rstrip("```").strip())
 
-# def main():
-#     ...
-GESTURE_SPELLS= {
-    "palm":"shield of light"
-    "peace":"healing aura"
-    "pointer":"lightning strike"
-    "thumbs up":"phonix blessing"
-}
 
-@st.cache_resource(show_spinner=False)
+# ── TODO 2: Write verify_hcaptcha(token) ──────────────────────
 
-def genarate_magic(labl:str,spell:str,source:str):
-    with st.spinner("Casting AI magic from the detected gesture..."):
-        st.session_state.spell_text = genarate_spell_text(label,spell,source)
-        img,err = generate_spell_image(build_image_prompt(spell,label,source))
-        if img:
-            st.session_state.spell_image = img
-        else:
-            st.session_state.spell_image = None
-            st.error(err or "Could not generate the spell image.")
-def prediction_panel(image:Image.Image,source:str):
-    st.session_state.input_source = source
-    st.imge(image,caption="gesture image", use_container_width=True)
-    st.markdown(f'<div class="pill">source:{source.title()}</div>',unsafe_allow_html=True)
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+@app.route("/studio")
+def studio():
+    return render_template("studio.html", hcaptcha_site_key=HCAPTCHA_SITE_KEY)
+
+@app.route("/history")
+def history():
+    return render_template("history.html", designs=[])
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    data = request.get_json(silent=True) or request.form
+
+    # ── TODO 3: Verify hCaptcha token before proceeding ───────
+
+    prefs = get_prefs(data)
     try:
-        model,labels = get_model()
-        pred = predict_gesture_from_image(model,labels,image)
-        pred["label"] = normalize(pred["label"])
-        for item in pred["top_predictions"]:
-            item["label"] = normalize(item["label"])
-        st.session_state.prediction = pred
-        spell = get_spell_name(pred["label"])
-        st.session_state.spell_name = spell
-        st.success(f"detected gesture:** {pred["label"]}**")
-
-        st.progress(float(pred["confidence"]), text=f"confidence:{pred['confidence']:.1%}")
-        c1,c2 = st.columns(2)
-        c1.markdown(f'div class="card"><b>Detected</b><br><br>{pred["label"]}</div>', unsafe_allow_html=True)
-        c2.markdown(f'div class="card"><b>Detected</b><br><br>{spell}</div>', unsafe_allow_html=True)
-        key = f"{source}:{pred['label']}:{pred['confidence']:.4f}"
-        if st.session_state.last_key! = key:
-            if st.button("✨ genarate Ai magic",use_container_width=True):
-                genarate_magic(pred['label'],spell,source)
-                st.session_state.last_key = key
+        concept = generate_concept(prefs)
+    except json.JSONDecodeError as e:
+        return jsonify({"error": f"Malformed AI response: {e}"}), 500
     except Exception as e:
-        st.error(f"model error:{e}\n\ntip:use python 3.10/3.11 and tensorflow==2.15.0")
+        return jsonify({"error": f"Concept generation failed: {e}"}), 500
+    return jsonify({"success": True, "concept": concept, "prefs": prefs})
 
 
-
-
-
-def get_model():
-    return load_local_teachable_machine_model(str(config.MODEL_PATH), str(config.LABELS_PATH))
-_
-def normalize(label: str) -> str:
-    return LABEL_MAP.get(label.strip(),label.strip())
-
-def pridiction_panel(image: Image.Image , source:str):
-    st.image(image, caption="gesture image",use_container_width=True)
-    st.markdown(f'<div class="pill">Source:{source.title()},/div>',unsafe_allow_html=True)
-
-    try:
-    model,labels = get_model()
-    pred = predict_gesture_from_image(model,labels,image)
-    pred["label"]=normalize(pred["label"])
-    for item in pred["top_predictions"]:
-        item["label"]= normalize(item["label"])
-        st.success(f"detected gesture: **{pred['label']}**")
-        st.progress(float(pred["confidence"]),text=f"confidence:{pred['confidence']:.1%}")
-        spell = GESTURE_SPELLS.get(pred["label"],"Arcane pulse")
-        c1,c2 = st.colums(2)
-def  reset_magic_session():
-    for k,v in _DEFAULTS.items():
-        st.session_state[k] = v
-def generate_magic_bundle():
-    if not st.session_state.prediction:
-        st.warning("Capture or upload an image first")
-        return
-    label = st.session_state.prediction["label"]
-    spell = st.session_state.spell_name
-    st.session_state.spell_prompt = build_hidden_prompt(label,spell,st.session_state.input_source)
-    with st.spinner("casting ai magic from the detected gesture. . .")
-    st.session_state.spell_text = generate_magic_responce(label,spell, f"this spell came from a{st.session_state.input_source} hand gesture image.")
-    img,eer = generate_magic_visual(st.session_state.spell_prompt)
-    if img:
-        st.session_state.spell_scene_image = img
-        st.session_state.spell_card_image = create_spell_card(spell,label,st.session_state.spell_ext,img)
-    else:
-        st.session_state.spell_scene_image = st.session_state.spell_card(spell,label,st.session_state.spell_card_image = 
-     None      
-        st.error(err or "could not generate the spell image")   
-    st.session_state.spell_log = ([{"gesture":label,"spell":spell,"text":
-st.session_state.spell_text,"source": st.session_state.input_source]}
-                                    + st.session_state.spell_log)
-[:config.MAX_SPELL_LOG]
-def show_hud():
-c1,c2,c,c4 = st.columns(4)
-gesture = st.session_state.prediction["label"] if st.session_state.prediction else
-"waiting . . ."
-    spell = st.session_state.spell_name or "No spell yet. . . "
-    for col,label,val in[
-        (c1,"suppported gestures", "palm.peace.pointer.thumbs up"),
-        (c2,"dectected gesture" gesture),
-        (c3,"active spell",spell),
-        (c4,"spell log",len(st.session_state.spell_log)),
-    ]:
-        col.markdown(f'<div class="status-card><b>{label}</b><br>{val}</div>' unsafe_allow_html = True)
-def prediction_panel(current_imge:Image.Image,source_name:str):
-    st.session_state.captured_image = current_image
-    st.session_state.input_source = source_name
-    st.image(current_image,caption="gesture image used for magic casting",
-         use_container_width=True)
-    st.markdown(f'<div class="source-pill"> Input source:{source_name.title()}</div>' unsafe_allow_html=True)
-                                                                                                                       )
-                                                                     
-
-        
-# ---------- PROVIDED — do not edit -------------------------------------------
 if __name__ == "__main__":
-    main()
-# ===== END LESSON 1 ===========================================================
+    app.run(debug=True, port=5000)
